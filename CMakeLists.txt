@@ -137,6 +137,7 @@ else()
         )
     endif()
     target_compile_definitions(boat4 PUBLIC ${BOAT_DEFS})
+    target_compile_definitions(boat4 PRIVATE RAND_PLATFORM_INDEPENDENT)
 
     # Platform dependencies
     if(BOAT_PAL STREQUAL "linux")

@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  *****************************************************************************/
 #include "boat_pal.h"
+#include "rand.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -90,6 +91,24 @@ BoatResult boat_random(uint8_t *buf, size_t len)
     size_t rd = fread(buf, 1, len, f);
     fclose(f);
     return (rd == len) ? BOAT_SUCCESS : BOAT_ERROR;
+}
+
+/*--- trezor-crypto RNG overrides (replace weak LCG with /dev/urandom) ---*/
+uint32_t random32(void)
+{
+    uint32_t v;
+    boat_random((uint8_t *)&v, sizeof(v));
+    return v;
+}
+
+void random_buffer(uint8_t *buf, size_t len)
+{
+    boat_random(buf, len);
+}
+
+void random_reseed(const uint32_t value)
+{
+    (void)value;  /* urandom needs no seed */
 }
 
 /*--- Mutex (pthread) ---*/
