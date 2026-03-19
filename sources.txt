@@ -1,0 +1,38 @@
+# BoAT v4 — Flat source list
+# Lines starting with # are comments
+# Lines starting with [TAG] are conditional: only include if TAG is defined
+# Usage: parse this file to build source lists for any build system
+
+# Core (always)
+src/core/boat_util.c
+src/core/boat_key.c
+src/core/boat_key_soft.c
+src/core/boat_rpc.c
+
+# EVM
+[EVM] src/evm/evm_rpc.c
+[EVM] src/evm/evm_tx.c
+[EVM] src/evm/evm_abi.c
+
+# Solana
+[SOL] src/sol/sol_rpc.c
+[SOL] src/sol/sol_tx.c
+[SOL] src/sol/sol_spl.c
+[SOL] src/sol/sol_ix.c
+[SOL] src/sol/sol_borsh.c
+
+# Payment (all require EVM)
+[PAY_X402] src/pay/pay_common.c
+[PAY_X402] src/pay/pay_x402.c
+[PAY_NANO] src/pay/pay_common.c
+[PAY_NANO] src/pay/pay_nano.c
+[PAY_GATEWAY] src/pay/pay_common.c
+[PAY_GATEWAY] src/pay/pay_gateway.c
+
+# PAL
+[PAL_LINUX] src/pal/linux/pal_linux.c
+
+# Third-party
+# [CJSON] — omit when using vendor-provided cJSON (e.g. ESP-IDF component)
+[CJSON] third-party/cJSON/cJSON.c
+# third-party/crypto/*.c — include all .c files in crypto/

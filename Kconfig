@@ -1,0 +1,52 @@
+menu "BoAT v4 SDK Configuration"
+
+config BOAT_EVM_ENABLED
+    bool "Enable EVM chain support (Ethereum, Base, Polygon, etc.)"
+    default y
+
+config BOAT_SOL_ENABLED
+    bool "Enable Solana chain support"
+    default y
+
+menu "Payment Protocols"
+    depends on BOAT_EVM_ENABLED
+
+config BOAT_PAY_X402_ENABLED
+    bool "Enable x402 payment protocol"
+    default n
+
+config BOAT_PAY_NANO_ENABLED
+    bool "Enable Circle Nanopayments"
+    default n
+
+config BOAT_PAY_GATEWAY_ENABLED
+    bool "Enable Circle Gateway"
+    default n
+
+endmenu
+
+menu "Key Management"
+
+config BOAT_KEY_SE_ENABLED
+    bool "Enable Secure Element backend"
+    default n
+
+config BOAT_KEY_TEE_ENABLED
+    bool "Enable TEE backend"
+    default n
+
+endmenu
+
+choice BOAT_PAL
+    prompt "Platform Abstraction Layer"
+    default BOAT_PAL_LINUX
+
+config BOAT_PAL_LINUX
+    bool "Linux (POSIX + libcurl)"
+
+config BOAT_PAL_CUSTOM
+    bool "Custom (user-provided)"
+
+endchoice
+
+endmenu
