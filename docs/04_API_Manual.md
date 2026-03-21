@@ -1255,6 +1255,7 @@ Query available balance via Gateway Wallet availableBalance(token, depositor).
     BoatResult boat_gateway_transfer(const BoatGatewayConfig *src_config,
                                      const BoatGatewayConfig *dst_config,
                                      const BoatKey *key,
+                                     const uint8_t *recipient,
                                      const uint8_t amount[32],
                                      const uint8_t max_fee[32],
                                      BoatEvmRpc *dst_rpc,
@@ -1268,6 +1269,7 @@ Parameters:
 - src_config [in]: Source chain Gateway configuration
 - dst_config [in]: Destination chain Gateway configuration (same as src for withdrawal)
 - key [in]: Signing key
+- recipient [in]: 20-byte EVM destination address, or NULL for self-transfer (sender's own address)
 - amount [in]: Transfer amount (uint256 big-endian)
 - max_fee [in]: Maximum fee willing to pay (uint256 big-endian, 0 for same-chain)
 - dst_rpc [in]: RPC connection to destination chain
@@ -1441,6 +1443,7 @@ Guarded by `BOAT_PAY_GATEWAY_ENABLED && BOAT_EVM_ENABLED && BOAT_SOL_ENABLED`.
         const BoatGatewaySolConfig *dst_config,
         const BoatKey *evm_key,
         const BoatKey *sol_key,
+        const uint8_t *sol_recipient,
         const uint8_t amount[32],
         const uint8_t max_fee[32],
         BoatSolRpc *dst_rpc,
@@ -1451,6 +1454,7 @@ Cross-chain transfer: EVM -> Solana.
 - dst_config [in]: Solana destination Gateway config
 - evm_key [in]: secp256k1 key (signs EIP-712 BurnIntent on EVM)
 - sol_key [in]: Ed25519 key (signs mint transaction on Solana)
+- sol_recipient [in]: 32-byte Solana pubkey of recipient, or NULL for self-transfer (sol_key's address)
 - amount [in]: uint256 big-endian (EVM source amount)
 - max_fee [in]: uint256 big-endian
 - dst_rpc [in]: Solana RPC connection
@@ -1463,6 +1467,7 @@ Cross-chain transfer: EVM -> Solana.
         const BoatGatewayConfig    *dst_config,
         const BoatKey *sol_key,
         const BoatKey *evm_key,
+        const uint8_t *evm_recipient,
         uint64_t amount,
         uint64_t max_fee,
         BoatEvmRpc *dst_rpc,
@@ -1473,6 +1478,7 @@ Cross-chain transfer: Solana -> EVM.
 - dst_config [in]: EVM destination Gateway config
 - sol_key [in]: Ed25519 key (signs binary BurnIntent on Solana)
 - evm_key [in]: secp256k1 key (signs mint transaction on EVM)
+- evm_recipient [in]: 20-byte EVM destination address, or NULL for self-transfer (evm_key's address)
 - amount [in]: u64 raw amount (Solana source)
 - max_fee [in]: u64 raw max fee
 - dst_rpc [in]: EVM RPC connection

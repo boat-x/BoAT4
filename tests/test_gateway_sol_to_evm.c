@@ -187,8 +187,16 @@ int main(int argc, char **argv)
 
     BoatGatewayTransferResult result;
     memset(&result, 0, sizeof(result));
+
+    /* Sender and receiver — same address for self-transfer */
+    BoatKeyInfo evm_info_recv;
+    boat_key_get_info(evm_key, &evm_info_recv);
+    const uint8_t *evm_sender   = evm_info_recv.address;
+    const uint8_t *evm_receiver = evm_info_recv.address;  /* self-transfer */
+
     r = boat_gateway_transfer_sol_to_evm(&sol_config, &evm_config,
                                           sol_key, evm_key,
+                                          evm_receiver,
                                           TRANSFER_USDC_RAW, MAX_FEE_RAW,
                                           &evm_rpc, &result);
     if (r == BOAT_SUCCESS && !test_is_zero(result.mint_txhash, 32)) {

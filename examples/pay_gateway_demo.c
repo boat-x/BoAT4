@@ -191,6 +191,7 @@ int main(void)
     memset(&xfer_result, 0, sizeof(xfer_result));
 
     r = boat_gateway_transfer(&arc_config, &base_config, key,
+                              NULL,  /* NULL = self-transfer */
                               xfer_amount, xfer_max_fee,
                               &base_rpc, &xfer_result);
     if (r != BOAT_SUCCESS) {
@@ -224,6 +225,7 @@ int main(void)
     memset(&wd_result, 0, sizeof(wd_result));
 
     r = boat_gateway_transfer(&arc_config, &arc_config, key,
+                              NULL,  /* NULL = self-transfer */
                               wd_amount, wd_fee,
                               &arc_rpc, &wd_result);
     if (r == BOAT_SUCCESS) {

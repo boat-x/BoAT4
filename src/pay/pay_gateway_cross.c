@@ -226,6 +226,7 @@ BoatResult boat_gateway_transfer_evm_to_sol(
     const BoatGatewaySolConfig *dst_config,
     const BoatKey *evm_key,
     const BoatKey *sol_key,
+    const uint8_t *sol_recipient,
     const uint8_t amount[32],
     const uint8_t max_fee[32],
     BoatSolRpc *dst_rpc,
@@ -245,8 +246,9 @@ BoatResult boat_gateway_transfer_evm_to_sol(
 
     /*--- 1. Build EIP-712 BurnIntent on EVM side ---*/
     /* Derive recipient ATA first — needed for destinationRecipient */
+    const uint8_t *recipient_wallet = sol_recipient ? sol_recipient : sol_info.address;
     uint8_t recipient_ata[32];
-    r = boat_sol_ata_address(sol_info.address, dst_config->usdc_mint, recipient_ata);
+    r = boat_sol_ata_address(recipient_wallet, dst_config->usdc_mint, recipient_ata);
     if (r != BOAT_SUCCESS) return r;
 
     /* TransferSpec struct hash: 15 slots (typehash + 14 fields) */
@@ -618,6 +620,7 @@ BoatResult boat_gateway_transfer_sol_to_evm(
     const BoatGatewayConfig    *dst_config,
     const BoatKey *sol_key,
     const BoatKey *evm_key,
+    const uint8_t *evm_recipient,
     uint64_t amount,
     uint64_t max_fee,
     BoatEvmRpc *dst_rpc,
@@ -635,8 +638,9 @@ BoatResult boat_gateway_transfer_sol_to_evm(
     if (r != BOAT_SUCCESS) return r;
 
     /*--- 1. Encode Solana binary BurnIntent ---*/
+    const uint8_t *recipient_addr = evm_recipient ? evm_recipient : evm_info.address;
     uint8_t evm_recipient_b32[32];
-    cross_addr_to_bytes32(evm_info.address, evm_recipient_b32);
+    cross_addr_to_bytes32(recipient_addr, evm_recipient_b32);
 
     /* Pad 20-byte EVM addresses to 32 bytes for binary encoding */
     uint8_t dst_contract_b32[32], dst_token_b32[32];

@@ -21,13 +21,15 @@ src/core/boat_rpc.c
 [SOL] src/sol/sol_ix.c
 [SOL] src/sol/sol_borsh.c
 
-# Payment (all require EVM)
+# Payment
 [PAY_X402] src/pay/pay_common.c
 [PAY_X402] src/pay/pay_x402.c
 [PAY_NANO] src/pay/pay_common.c
 [PAY_NANO] src/pay/pay_nano.c
 [PAY_GATEWAY] src/pay/pay_common.c
 [PAY_GATEWAY] src/pay/pay_gateway.c
+[PAY_GATEWAY+SOL] src/pay/pay_gateway_sol.c
+[PAY_GATEWAY+EVM+SOL] src/pay/pay_gateway_cross.c
 
 # PAL
 [PAL_LINUX] src/pal/linux/pal_linux.c

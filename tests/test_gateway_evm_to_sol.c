@@ -256,8 +256,16 @@ int main(int argc, char **argv)
 
     BoatGatewaySolTransferResult result;
     memset(&result, 0, sizeof(result));
+
+    /* Sender and receiver — same address for self-transfer */
+    BoatKeyInfo sol_info_recv;
+    boat_key_get_info(sol_key, &sol_info_recv);
+    const uint8_t *sol_sender   = sol_info_recv.address;
+    const uint8_t *sol_receiver = sol_info_recv.address;  /* self-transfer */
+
     r = boat_gateway_transfer_evm_to_sol(&evm_config, &sol_config,
                                           evm_key, sol_key,
+                                          sol_receiver,
                                           SMALL_USDC, MAX_FEE,
                                           &sol_rpc, &result);
     if (r == BOAT_SUCCESS && !test_is_zero(result.signature, 64)) {

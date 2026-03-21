@@ -277,6 +277,7 @@ BoatResult boat_gateway_trustless_complete(const BoatGatewayConfig *config, cons
 BoatResult boat_gateway_transfer(const BoatGatewayConfig *src_config,
                                  const BoatGatewayConfig *dst_config,
                                  const BoatKey *key,
+                                 const uint8_t *recipient,
                                  const uint8_t amount[32],
                                  const uint8_t max_fee[32],
                                  BoatEvmRpc *dst_rpc,
@@ -303,7 +304,7 @@ BoatResult boat_gateway_transfer(const BoatGatewayConfig *src_config,
     addr_to_bytes32(src_config->usdc_addr, src_token);
     addr_to_bytes32(dst_config->usdc_addr, dst_token);
     addr_to_bytes32(info.address, src_depositor);
-    addr_to_bytes32(info.address, dst_recipient);
+    addr_to_bytes32(recipient ? recipient : info.address, dst_recipient);
     addr_to_bytes32(info.address, src_signer);
     memset(dst_caller, 0, 32); /* zero = anyone can call */
     boat_random(salt, 32);

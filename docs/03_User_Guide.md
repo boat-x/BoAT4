@@ -578,7 +578,9 @@ Enable with -DBOAT_PAY_GATEWAY=ON (requires -DBOAT_EVM=ON) at build time.
 
     // Withdraw all available balance (instant, same-chain transfer)
     // Use boat_gateway_transfer() with src == dst config:
-    // boat_gateway_transfer(&config, &config, key, amount, zero_fee, &rpc, &result);
+    // boat_gateway_transfer(&config, &config, key, NULL, amount, zero_fee, &rpc, &result);
+    // Pass a 20-byte EVM address as recipient to transfer to a different address:
+    // boat_gateway_transfer(&config, &config, key, recipient_addr, amount, zero_fee, &rpc, &result);
 
     // Trustless withdrawal (emergency, 7-day delay, only if Circle API is down):
     // boat_gateway_trustless_withdraw(&config, key, amount, &rpc, txhash);
@@ -651,6 +653,7 @@ Cross-chain transfers require two keys: one for each chain.
     BoatGatewaySolTransferResult result;
     boat_gateway_transfer_evm_to_sol(&evm_config, &sol_config,
                                       evm_key, sol_key,
+                                      NULL,  /* NULL = self, or 32-byte Solana pubkey */
                                       amount_u256, max_fee_u256,
                                       &sol_rpc, &result);
 
@@ -658,6 +661,7 @@ Cross-chain transfers require two keys: one for each chain.
     BoatGatewayTransferResult evm_result;
     boat_gateway_transfer_sol_to_evm(&sol_config, &evm_config,
                                       sol_key, evm_key,
+                                      NULL,  /* NULL = self, or 20-byte EVM address */
                                       amount_u64, max_fee_u64,
                                       &evm_rpc, &evm_result);
 

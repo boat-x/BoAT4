@@ -164,6 +164,7 @@ BoatResult boat_gateway_balance(const BoatGatewayConfig *config, const uint8_t a
 BoatResult boat_gateway_transfer(const BoatGatewayConfig *src_config,
                                  const BoatGatewayConfig *dst_config,
                                  const BoatKey *key,
+                                 const uint8_t *recipient,  /* 20-byte EVM addr, NULL = self */
                                  const uint8_t amount[32],
                                  const uint8_t max_fee[32],
                                  BoatEvmRpc *dst_rpc,
@@ -246,6 +247,7 @@ BoatResult boat_gateway_transfer_evm_to_sol(
     const BoatGatewaySolConfig *dst_config,
     const BoatKey *evm_key,
     const BoatKey *sol_key,
+    const uint8_t *sol_recipient,  /* 32-byte pubkey, NULL = sol_key's address */
     const uint8_t amount[32],
     const uint8_t max_fee[32],
     BoatSolRpc *dst_rpc,
@@ -257,6 +259,7 @@ BoatResult boat_gateway_transfer_sol_to_evm(
     const BoatGatewayConfig    *dst_config,
     const BoatKey *sol_key,
     const BoatKey *evm_key,
+    const uint8_t *evm_recipient,  /* 20-byte EVM addr, NULL = evm_key's address */
     uint64_t amount,
     uint64_t max_fee,
     BoatEvmRpc *dst_rpc,
