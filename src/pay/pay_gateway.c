@@ -20,7 +20,7 @@ static const uint8_t WITHDRAW_SEL[4]             = { 0x51, 0xcf, 0xf8, 0xd9 }; /
 static const uint8_t AVAILABLE_BALANCE_SEL[4]    = { 0x3c, 0xcb, 0x64, 0xae }; /* availableBalance(address,address) */
 static const uint8_t GATEWAY_MINT_SEL[4]         = { 0x9f, 0xb0, 0x1c, 0xc5 }; /* gatewayMint(bytes,bytes) */
 
-#define GATEWAY_API_TESTNET "https://gateway-api-testnet.circle.com/v1"
+#define GATEWAY_API_FALLBACK "https://gateway-api-testnet.circle.com/v1"
 
 /*============================================================================
  * EIP-712 type hashes for BurnIntent / TransferSpec
@@ -410,7 +410,9 @@ BoatResult boat_gateway_transfer(const BoatGatewayConfig *src_config,
     const BoatHttpOps *http = boat_get_http_ops();
     BoatHttpResponse api_resp = {0};
     char api_url[256];
-    snprintf(api_url, sizeof(api_url), "%s/transfer", GATEWAY_API_TESTNET);
+    const char *base = (src_config->gateway_api_url[0] != '\0')
+                       ? src_config->gateway_api_url : GATEWAY_API_FALLBACK;
+    snprintf(api_url, sizeof(api_url), "%s/transfer", base);
 
     r = http->post(api_url, "application/json",
                    (const uint8_t *)api_body, strlen(api_body), NULL, &api_resp);

@@ -1066,12 +1066,20 @@ functions for a simple GET with no extra headers.
 #### BoatX402PaymentReq
 
     typedef struct {
-        char     network[32];        // Network name from 402 response
-        char     amount_str[32];     // Amount as decimal string
-        uint8_t  pay_to[20];         // Payee address
-        uint8_t  asset[20];          // Token contract address
-        uint32_t max_timeout;        // Max timeout in seconds
-        char     resource_url[512];  // Resource URL
+        int      x402_version;          // 1 or 2
+        char     scheme[16];            // "exact"
+        char     network[64];           // v1: "base-sepolia", v2: "eip155:84532"
+        char     amount_str[32];        // Amount as decimal string
+        uint8_t  pay_to[20];            // Payee address
+        char     pay_to_hex[43];        // "0x..." checksum address for v2 echo-back
+        uint8_t  asset[20];             // Token contract address (chain-specific)
+        char     asset_hex[43];         // "0x..." for v2 echo-back
+        uint32_t max_timeout;           // Max timeout in seconds
+        char     resource_url[512];     // Resource URL
+        char     asset_name[64];        // EIP-712 domain name from extra.name
+        char     asset_version[16];     // EIP-712 domain version from extra.version
+        uint8_t  verifying_contract[20]; // EIP-712 verifyingContract from extra
+        bool     has_verifying_contract; // true if extra.verifyingContract was present
     } BoatX402PaymentReq;
 
 #### boat_x402_request
@@ -1129,11 +1137,8 @@ returns immediately. If 402, signs payment and replays with X-Payment header.
 #### BoatNanoConfig
 
     typedef struct {
-        char               gateway_url[256];          // Gateway REST API URL
-        uint8_t            gateway_wallet_addr[20];   // Gateway Wallet contract for deposit
+        uint8_t            gateway_wallet_addr[20];   // Gateway Wallet contract (deposit + balance)
         uint8_t            usdc_addr[20];             // USDC contract address on this chain
-        char               usdc_name[64];             // EIP-712 domain name (e.g. "USD Coin" or "USDC")
-        char               usdc_version[16];          // EIP-712 domain version (e.g. "2")
         BoatEvmChainConfig chain;                     // Chain config
     } BoatNanoConfig;
 
@@ -1201,14 +1206,18 @@ Requires BOAT_PAY_X402_ENABLED in addition to BOAT_PAY_NANO_ENABLED.
         uint8_t            gateway_minter_addr[20];  // gatewayMint contract on this chain
         uint8_t            usdc_addr[20];            // USDC contract address on this chain
         uint32_t           domain;                   // Circle Gateway domain ID
+        char               gateway_api_url[128];     // Gateway API URL (empty = testnet default)
         BoatEvmChainConfig chain;                    // Chain config
     } BoatGatewayConfig;
 
 - gateway_minter_addr: Used for cross-chain mint on destination chain
-- domain: Circle Gateway domain ID (e.g. 26 for Arc Testnet, 6 for Base Sepolia)
+- domain: Circle Gateway domain ID (e.g. 7 for Polygon, 6 for Base Sepolia)
+- gateway_api_url: e.g. "https://gateway-api.circle.com/v1" for mainnet; empty string falls back to testnet
 
 Testnet Gateway Wallet: 0x0077777d7EBA4688BDeF3E311b846F25870A19B9
 Testnet Gateway Minter: 0x0022222ABE238Cc2C7Bb1f21003F0a260052475B
+Mainnet Gateway Wallet (Polygon): 0x77777777Dcc4d5A8B6E418Fd04D8997ef11000eE
+Mainnet Gateway Minter (Polygon): 0x2222222d7164433c4C09B0b0D809a9b52C04C205
 Mainnet Gateway Wallet: 0x77777777Dcc4d5A8B6E418Fd04D8997ef11000eE
 
 #### BoatGatewayTransferResult
@@ -1292,6 +1301,183 @@ For normal withdrawal, use boat_gateway_transfer() with src_config == dst_config
 (same-chain transfer). This is the recommended path — instant, no delay, no 7-day wait.
 Set max_fee to 0 for same-chain transfers (only gas cost applies).
 
+### 7.4 Circle Gateway — Solana
+
+Guarded by `BOAT_PAY_GATEWAY_ENABLED && BOAT_SOL_ENABLED`.
+
+#### BoatGatewaySolConfig
+
+    typedef struct {
+        uint8_t            gateway_wallet_program[32];  // GatewayWallet program ID
+        uint8_t            gateway_minter_program[32];  // GatewayMinter program ID
+        uint8_t            usdc_mint[32];               // USDC SPL token mint
+        uint32_t           domain;                      // Circle Gateway domain ID (5 for Solana)
+        char               gateway_api_url[128];        // Gateway API URL (empty = testnet default)
+        BoatSolChainConfig chain;                       // Solana chain config
+    } BoatGatewaySolConfig;
+
+#### BoatGatewaySolTransferResult
+
+    typedef struct {
+        uint8_t signature[64];   // Solana transaction signature
+    } BoatGatewaySolTransferResult;
+
+#### BoatGatewaySolDepositInfo
+
+    typedef struct {
+        uint64_t available_amount;    // Available balance (raw, 6 decimals)
+        uint64_t withdrawing_amount;  // Amount in withdrawal process
+        uint64_t withdrawal_slot;     // Slot when withdrawal was initiated
+    } BoatGatewaySolDepositInfo;
+
+#### Well-known Program IDs
+
+    extern const uint8_t BOAT_GW_SOL_DEVNET_WALLET[32];
+    extern const uint8_t BOAT_GW_SOL_DEVNET_MINTER[32];
+    extern const uint8_t BOAT_GW_SOL_MAINNET_WALLET[32];
+    extern const uint8_t BOAT_GW_SOL_MAINNET_MINTER[32];
+    extern const uint8_t BOAT_GW_SOL_DEVNET_USDC[32];
+
+#### boat_sol_find_pda
+
+    BoatResult boat_sol_find_pda(const uint8_t *seeds[], const size_t seed_lens[],
+                                 size_t num_seeds, const uint8_t program_id[32],
+                                 uint8_t pda[32]);
+
+Generic Solana PDA (Program Derived Address) derivation. Equivalent to
+Solana's `findProgramAddress(seeds, programId)`.
+- seeds [in]: Array of seed byte pointers
+- seed_lens [in]: Array of seed lengths
+- num_seeds [in]: Number of seeds
+- program_id [in]: 32-byte program ID
+- pda [out]: Derived 32-byte PDA
+
+#### boat_gateway_sol_deposit
+
+    BoatResult boat_gateway_sol_deposit(const BoatGatewaySolConfig *config,
+                                        const BoatKey *key, uint64_t amount,
+                                        BoatSolRpc *rpc, uint8_t sig[64]);
+
+Deposit USDC into Gateway Wallet on Solana. Builds a single transaction with
+the deposit instruction (discriminator [22,0]).
+- config [in]: Solana Gateway configuration
+- key [in]: Ed25519 signing key (payer and owner)
+- amount [in]: Amount in raw units (1 USDC = 1000000)
+- rpc [in]: Solana RPC connection
+- sig [out]: 64-byte transaction signature
+
+#### boat_gateway_sol_balance
+
+    BoatResult boat_gateway_sol_balance(const BoatGatewaySolConfig *config,
+                                        const uint8_t owner[32],
+                                        BoatSolRpc *rpc,
+                                        BoatGatewaySolDepositInfo *info);
+
+Query Gateway deposit balance for an owner on Solana (on-chain).
+- owner [in]: 32-byte owner pubkey
+- info [out]: Deposit info (available, withdrawing, withdrawal_slot).
+  All zeros if deposit account does not exist.
+
+#### boat_gateway_sol_api_balance
+
+    BoatResult boat_gateway_sol_api_balance(const BoatGatewaySolConfig *config,
+                                            const uint8_t owner[32],
+                                            uint64_t *available);
+
+Query Gateway balance via Circle Gateway REST API.
+- owner [in]: 32-byte owner pubkey
+- available [out]: Available balance in raw units (1 USDC = 1000000)
+- Returns: BOAT_SUCCESS or error. Uses POST to /v1/balances endpoint.
+
+This returns the off-chain view that the Gateway protocol uses for transfer decisions,
+which may differ from the on-chain balance during pending operations.
+
+#### boat_gateway_sol_transfer
+
+    BoatResult boat_gateway_sol_transfer(const BoatGatewaySolConfig *src_config,
+                                         const BoatGatewaySolConfig *dst_config,
+                                         const BoatKey *key,
+                                         const uint8_t *recipient,
+                                         uint64_t amount, uint64_t max_fee,
+                                         BoatSolRpc *dst_rpc,
+                                         BoatGatewaySolTransferResult *result);
+
+Transfer USDC via Circle Gateway on Solana. Supports:
+- Same-chain instant withdrawal (src == dst): set max_fee = 0
+- Cross-chain Solana-to-Solana transfer (different configs)
+
+Flow: encode binary BurnIntent -> Ed25519 sign -> POST to Gateway API ->
+parse ReducedMintAttestation -> build gatewayMint instruction -> send on destination.
+- recipient [in]: 32-byte recipient pubkey (NULL for self-transfer)
+- amount [in]: Transfer amount (raw u64)
+- max_fee [in]: Maximum fee (raw u64, 0 for same-chain)
+- result [out]: Transaction signature on destination chain
+
+#### boat_gateway_sol_trustless_withdraw
+
+    BoatResult boat_gateway_sol_trustless_withdraw(const BoatGatewaySolConfig *config,
+                                                   const BoatKey *key, uint64_t amount,
+                                                   BoatSolRpc *rpc, uint8_t sig[64]);
+
+Emergency withdrawal step 1 on Solana. Initiates withdrawal with delay period.
+Only needed when Circle's API is unavailable.
+
+#### boat_gateway_sol_trustless_complete
+
+    BoatResult boat_gateway_sol_trustless_complete(const BoatGatewaySolConfig *config,
+                                                   const BoatKey *key,
+                                                   BoatSolRpc *rpc, uint8_t sig[64]);
+
+Emergency withdrawal step 2 on Solana. Completes withdrawal after delay period.
+
+### 7.5 Circle Gateway — Cross-chain (EVM <-> Solana)
+
+Guarded by `BOAT_PAY_GATEWAY_ENABLED && BOAT_EVM_ENABLED && BOAT_SOL_ENABLED`.
+
+#### boat_gateway_transfer_evm_to_sol
+
+    BoatResult boat_gateway_transfer_evm_to_sol(
+        const BoatGatewayConfig    *src_config,
+        const BoatGatewaySolConfig *dst_config,
+        const BoatKey *evm_key,
+        const BoatKey *sol_key,
+        const uint8_t amount[32],
+        const uint8_t max_fee[32],
+        BoatSolRpc *dst_rpc,
+        BoatGatewaySolTransferResult *result);
+
+Cross-chain transfer: EVM -> Solana.
+- src_config [in]: EVM source chain Gateway config
+- dst_config [in]: Solana destination Gateway config
+- evm_key [in]: secp256k1 key (signs EIP-712 BurnIntent on EVM)
+- sol_key [in]: Ed25519 key (signs mint transaction on Solana)
+- amount [in]: uint256 big-endian (EVM source amount)
+- max_fee [in]: uint256 big-endian
+- dst_rpc [in]: Solana RPC connection
+- result [out]: Solana transaction signature
+
+#### boat_gateway_transfer_sol_to_evm
+
+    BoatResult boat_gateway_transfer_sol_to_evm(
+        const BoatGatewaySolConfig *src_config,
+        const BoatGatewayConfig    *dst_config,
+        const BoatKey *sol_key,
+        const BoatKey *evm_key,
+        uint64_t amount,
+        uint64_t max_fee,
+        BoatEvmRpc *dst_rpc,
+        BoatGatewayTransferResult *result);
+
+Cross-chain transfer: Solana -> EVM.
+- src_config [in]: Solana source Gateway config
+- dst_config [in]: EVM destination Gateway config
+- sol_key [in]: Ed25519 key (signs binary BurnIntent on Solana)
+- evm_key [in]: secp256k1 key (signs mint transaction on EVM)
+- amount [in]: u64 raw amount (Solana source)
+- max_fee [in]: u64 raw max fee
+- dst_rpc [in]: EVM RPC connection
+- result [out]: EVM mint transaction hash
+
 ---
 
 ## 8. Compile-Time Configuration Macros
@@ -1326,3 +1512,12 @@ Set via compiler -D flags, CMake options, or Kconfig.
 | boat_x402_pay_and_get | response | boat_free() |
 | boat_x402_process | response | boat_free() |
 | boat_sol_rpc_call | result_json | boat_free() |
+| boat_gateway_deposit | — (fills txhash[32]) | n/a |
+| boat_gateway_balance | — (fills balance[32]) | n/a |
+| boat_gateway_transfer | — (fills result struct) | n/a |
+| boat_gateway_sol_deposit | — (fills sig[64]) | n/a |
+| boat_gateway_sol_balance | — (fills info struct) | n/a |
+| boat_gateway_sol_api_balance | — (fills uint64_t) | n/a |
+| boat_gateway_sol_transfer | — (fills result struct) | n/a |
+| boat_gateway_transfer_evm_to_sol | — (fills result struct) | n/a |
+| boat_gateway_transfer_sol_to_evm | — (fills result struct) | n/a |

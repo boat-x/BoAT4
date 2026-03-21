@@ -63,7 +63,7 @@ BoatResult boat_sol_rpc_call(BoatSolRpc *rpc, const char *method, const char *pa
  * Instruction
  *--------------------------------------------------------------------------*/
 #define BOAT_SOL_MAX_IX_ACCOUNTS  16
-#define BOAT_SOL_MAX_IX_DATA      256
+#define BOAT_SOL_MAX_IX_DATA      512
 
 typedef struct {
     uint8_t program_id[32];
@@ -124,6 +124,13 @@ BoatResult boat_sol_spl_transfer(const uint8_t from_ata[32], const uint8_t to_at
                                  BoatSolInstruction *ix);
 BoatResult boat_sol_spl_create_ata(const uint8_t payer[32], const uint8_t wallet[32],
                                    const uint8_t mint[32], BoatSolInstruction *ix);
+BoatResult boat_sol_spl_create_ata_idempotent(const uint8_t payer[32], const uint8_t wallet[32],
+                                               const uint8_t mint[32], BoatSolInstruction *ix);
+
+/* Generic PDA derivation: findProgramAddress(seeds, program_id) */
+BoatResult boat_sol_find_pda(const uint8_t *seeds[], const size_t seed_lens[],
+                             size_t num_seeds, const uint8_t program_id[32],
+                             uint8_t pda[32]);
 
 /*----------------------------------------------------------------------------
  * Borsh encoder (Tier 2)

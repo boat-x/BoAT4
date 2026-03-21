@@ -83,6 +83,12 @@ endif()
 if(BOAT_PAY_GATEWAY)
     list(APPEND BOAT_PAY_SRCS src/pay/pay_gateway.c)
 endif()
+if(BOAT_PAY_GATEWAY AND BOAT_SOL)
+    list(APPEND BOAT_PAY_SRCS src/pay/pay_gateway_sol.c)
+endif()
+if(BOAT_PAY_GATEWAY AND BOAT_EVM AND BOAT_SOL)
+    list(APPEND BOAT_PAY_SRCS src/pay/pay_gateway_cross.c)
+endif()
 
 # PAL
 set(BOAT_PAL_SRCS "")
@@ -182,6 +188,11 @@ if(NOT DEFINED ESP_PLATFORM)
             add_executable(pay_gateway_demo examples/pay_gateway_demo.c)
             target_link_libraries(pay_gateway_demo boat4)
         endif()
+
+        if(BOAT_PAY_GATEWAY AND BOAT_SOL)
+            add_executable(pay_gateway_sol_demo examples/pay_gateway_sol_demo.c)
+            target_link_libraries(pay_gateway_sol_demo boat4)
+        endif()
     endif()
 
     #-------------------------------------------------------------------------
@@ -189,11 +200,13 @@ if(NOT DEFINED ESP_PLATFORM)
     #-------------------------------------------------------------------------
     option(BOAT_BUILD_TESTS "Build testnet integration tests" OFF)
     if(BOAT_BUILD_TESTS)
-        add_executable(test_eth_transfer tests/test_eth_transfer.c)
-        target_link_libraries(test_eth_transfer boat4)
+        if(BOAT_EVM)
+            add_executable(test_eth_transfer tests/test_eth_transfer.c)
+            target_link_libraries(test_eth_transfer boat4)
 
-        add_executable(test_erc20_transfer tests/test_erc20_transfer.c)
-        target_link_libraries(test_erc20_transfer boat4)
+            add_executable(test_erc20_transfer tests/test_erc20_transfer.c)
+            target_link_libraries(test_erc20_transfer boat4)
+        endif()
 
         if(BOAT_SOL)
             add_executable(test_sol_transfer tests/test_sol_transfer.c)
@@ -208,9 +221,25 @@ if(NOT DEFINED ESP_PLATFORM)
             target_link_libraries(test_x402_payment boat4)
         endif()
 
-        if(BOAT_PAY_GATEWAY)
+        if(BOAT_PAY_GATEWAY AND BOAT_EVM)
             add_executable(test_gateway tests/test_gateway.c)
             target_link_libraries(test_gateway boat4)
+        endif()
+
+        if(BOAT_PAY_GATEWAY AND BOAT_SOL)
+            add_executable(test_gateway_sol tests/test_gateway_sol.c)
+            target_link_libraries(test_gateway_sol boat4)
+
+            add_executable(test_gateway_sol_transfer tests/test_gateway_sol_transfer.c)
+            target_link_libraries(test_gateway_sol_transfer boat4)
+        endif()
+
+        if(BOAT_PAY_GATEWAY AND BOAT_EVM AND BOAT_SOL)
+            add_executable(test_gateway_evm_to_sol tests/test_gateway_evm_to_sol.c)
+            target_link_libraries(test_gateway_evm_to_sol boat4)
+
+            add_executable(test_gateway_sol_to_evm tests/test_gateway_sol_to_evm.c)
+            target_link_libraries(test_gateway_sol_to_evm boat4)
         endif()
 
         if(BOAT_PAY_NANO)

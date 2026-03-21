@@ -59,10 +59,13 @@ Each module is independently compilable. Dependencies flow downward only:
 - EVM Module depends on: Core (RPC, Key, Util), Third-party (cJSON, trezor-crypto)
 - Solana Module depends on: Core (RPC, Key, Util), Third-party (cJSON, trezor-crypto)
 - Payment Module depends on: Core (Key, Util), EVM Module, Third-party
+- Payment Module (Gateway Solana): additionally depends on Solana Module
+- Payment Module (Gateway Cross-chain): depends on both EVM and Solana Modules
 - Core depends on: PAL, Third-party
 
 No module depends on another module at the same level. EVM does not depend on Solana.
-Payment depends on EVM (because EIP-3009 is EVM-specific) but not on Solana.
+Payment depends on EVM (because EIP-3009 is EVM-specific). Gateway Solana support
+additionally depends on the Solana module. All dependencies are compile-time guarded.
 
 ---
 
@@ -92,11 +95,13 @@ Payment depends on EVM (because EIP-3009 is EVM-specific) but not on Solana.
           sol_spl.c         SPL Token helpers + ATA derivation
           sol_ix.c          Generic instruction builder
           sol_borsh.c       Borsh encoder
-        pay/                Payment protocols (4 files)
+        pay/                Payment protocols (6 files)
           pay_common.c      EIP-712 domain hash, EIP-3009 signing
           pay_x402.c        x402 HTTP 402 challenge-response
           pay_nano.c        Circle Nanopayments
-          pay_gateway.c     Circle Gateway deposit/withdraw
+          pay_gateway.c     Circle Gateway deposit/withdraw (EVM)
+          pay_gateway_sol.c Circle Gateway on Solana (deposit, balance, transfer)
+          pay_gateway_cross.c Cross-chain Gateway (EVM <-> Solana)
         pal/                Platform ports
           linux/
             pal_linux.c     Linux reference (POSIX + libcurl)
@@ -105,7 +110,7 @@ Payment depends on EVM (because EIP-3009 is EVM-specific) but not on Solana.
         cJSON/              cJSON parser
       tools/
         abi2c.py            ABI-to-C codec generator
-      examples/             5 example programs
+      examples/             9 example programs
       CMakeLists.txt        CMake build
       boat.mk              GNU Make fragment
       sources.txt           Flat source list
@@ -477,6 +482,46 @@ bare-metal and RTOS environments.
       spl_transfer -> builds instruction with TOKEN_PROGRAM_ID + accounts + [3, amount_le]
       tx_sign -> deduplicate accounts -> sort -> serialize message -> ed25519_sign
       tx_send -> base64 encode -> sol_rpc -> boat_rpc -> BoatHttpOps.post()
+
+### 10.4 Circle Gateway on Solana
+
+    Application:
+      key = boat_key_import_raw(ED25519, privkey, 32)
+      boat_sol_rpc_init(&rpc, "https://api.devnet.solana.com")
+      // Configure: program IDs, USDC mint, domain=5
+      boat_gateway_sol_balance(&config, owner, &rpc, &dep_info)
+      boat_gateway_sol_deposit(&config, key, amount, &rpc, sig)
+      boat_gateway_sol_transfer(&src, &dst, key, amount, fee, &rpc, &result)
+
+    Key differences from EVM Gateway:
+      - Addresses are 32-byte pubkeys (not 20-byte)
+      - Amounts are uint64 (not uint256) — USDC has 6 decimals on both
+      - Account model uses PDA-derived accounts (7 PDA types)
+      - BurnIntent is binary-encoded with 0xff domain header (not EIP-712)
+      - Signing uses Ed25519 (not secp256k1 recoverable)
+      - Attestation uses ReducedMintAttestation (~108 bytes, fits Solana 1232-byte tx limit)
+      - Instructions use Borsh encoding with 2-byte discriminators
+
+    Internal flow:
+      deposit -> derive PDAs (wallet, custody, deposit, denylist, eventAuth)
+             -> compute owner ATA -> build instruction [22,0] + u64 LE amount
+             -> get blockhash -> build tx -> ed25519_sign -> send
+      transfer -> encode binary BurnIntent -> prepend 0xff domain header
+              -> SHA256 hash -> ed25519_sign -> POST to Gateway API
+              -> parse ReducedMintAttestation -> build gatewayMint ix [12,0]
+              -> get blockhash -> build tx -> ed25519_sign -> send
+
+### 10.5 Cross-chain Gateway (EVM <-> Solana)
+
+    EVM -> Solana:
+      Build EIP-712 BurnIntent on EVM -> secp256k1 sign -> POST to Gateway API
+      -> parse ReducedMintAttestation -> build Solana gatewayMint instruction
+      -> ed25519 sign -> send on Solana
+
+    Solana -> EVM:
+      Encode binary BurnIntent on Solana -> ed25519 sign -> POST to Gateway API
+      -> parse attestation -> build EVM gatewayMint(bytes,bytes) calldata
+      -> secp256k1 sign -> send on EVM
 
 ---
 

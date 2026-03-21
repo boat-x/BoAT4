@@ -53,7 +53,7 @@ BoAT4/
 │   ├── core/               # boat_util, boat_key, boat_key_soft, boat_rpc
 │   ├── evm/                # evm_rpc, evm_tx, evm_abi
 │   ├── sol/                # sol_rpc, sol_tx, sol_spl, sol_ix, sol_borsh
-│   ├── pay/                # pay_common, pay_x402, pay_nano, pay_gateway
+│   ├── pay/                # pay_common, pay_x402, pay_nano, pay_gateway, pay_gateway_sol, pay_gateway_cross
 │   └── pal/linux/          # Linux PAL (POSIX + libcurl)
 ├── third-party/
 │   ├── crypto/             # trezor-crypto (secp256k1, ed25519, sha, keccak, etc.)
@@ -275,10 +275,12 @@ boat_address_from_string("4zMMC9srt5...", addr, sizeof(addr), &len);
 | `evm_transfer.c` | Send ETH on Base Sepolia |
 | `evm_erc20.c` | ERC-20 token transfer with ABI encoding |
 | `evm_erc20_transferfrom.c` | ERC-20 transferFrom using abi2c-generated codec |
+| `erc20_codec.c` | Generated ERC-20 codec (abi2c output) |
 | `sol_transfer.c` | Send SOL / SPL tokens on Solana devnet |
 | `pay_x402_demo.c` | x402 payment protocol flow (HTTP 402 → pay → retry) |
 | `pay_nano_demo.c` | Circle Nanopayments (EIP-3009 gasless micropayments) |
-| `pay_gateway_demo.c` | Circle Gateway deposit and cross-chain transfer |
+| `pay_gateway_demo.c` | Circle Gateway deposit and cross-chain transfer (EVM) |
+| `pay_gateway_sol_demo.c` | Circle Gateway on Solana (deposit, balance, transfer) |
 
 Build examples:
 ```bash
@@ -305,7 +307,9 @@ python3 tools/abi2c.py erc20_abi.json -o erc20_codec.c
 | `BOAT_TEST_EVM_PRIVKEY` | Secp256k1 private key (hex) for EVM tests |
 | `BOAT_TEST_EVM_RPC_URL` | EVM RPC endpoint (e.g. Base Sepolia) |
 | `BOAT_TEST_SOL_PRIVKEY` | Ed25519 private key (base58) for Solana tests |
-| `BOAT_TEST_SOL_RPC_URL` | Solana RPC endpoint (e.g. devnet) |
+| `BOAT_TEST_SOL_PRIVKEY2` | Ed25519 recipient key for SOL-to-SOL transfer test |
+| `BOAT_TEST_SOL_RPC` | Solana RPC endpoint override |
+| `BOAT_TEST_POLYGON_RPC` | Polygon RPC endpoint override |
 | `BOAT_TEST_X402_URL` | x402-enabled resource URL for payment tests |
 | `BOAT_TEST_USDC_CONTRACT` | USDC contract address for payment tests |
 

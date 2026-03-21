@@ -18,6 +18,9 @@ BoAT v4 is a ground-up rewrite of the BoAT SDK — a lightweight C-language bloc
 - **x402:** HTTP 402 payment flow (Coinbase)
 - **Circle Nanopayments:** EIP-3009 gasless micropayments
 - **Circle Gateway:** Cross-chain USDC transfer (deposit, transfer, trustless withdrawal)
+  - EVM: deposit, balance, transfer, trustless withdraw/complete
+  - Solana: deposit, balance (on-chain + API), transfer (SOL-to-SOL), trustless withdraw/complete
+  - Cross-chain: EVM-to-Solana and Solana-to-EVM transfers
 
 ### Key Management
 
@@ -49,14 +52,16 @@ BoAT v4 is a ground-up rewrite of the BoAT SDK — a lightweight C-language bloc
 | `evm_transfer.c` | Send ETH on Base |
 | `evm_erc20.c` | ERC-20 token transfer |
 | `evm_erc20_transferfrom.c` | ERC-20 transferFrom with allowance check |
+| `erc20_codec.c` | Generated ERC-20 codec (abi2c output) |
 | `sol_transfer.c` | Send SPL token on Solana |
 | `pay_x402_demo.c` | x402 payment protocol |
 | `pay_nano_demo.c` | Circle Nanopayments |
-| `pay_gateway_demo.c` | Circle Gateway |
+| `pay_gateway_demo.c` | Circle Gateway (EVM) |
+| `pay_gateway_sol_demo.c` | Circle Gateway on Solana |
 
 ### Integration Tests
 
-Seven testnet integration tests covering ETH transfer, ERC-20 transfer, SOL transfer, SPL transfer, x402 payment, Nanopayments, and Gateway. Configured via environment variables (`BOAT_TEST_EVM_PRIVKEY`, `BOAT_TEST_EVM_RPC_URL`, etc.).
+Eleven integration tests covering ETH transfer, ERC-20 transfer, SOL transfer, SPL transfer, x402 payment, Nanopayments, Gateway (EVM), Gateway Solana (PDA + balance), Gateway SOL-to-SOL transfer, Gateway EVM-to-SOL cross-chain, and Gateway SOL-to-EVM cross-chain. Configured via environment variables (`BOAT_TEST_EVM_PRIVKEY`, `BOAT_TEST_SOL_PRIVKEY`, etc.).
 
 ### Security
 
