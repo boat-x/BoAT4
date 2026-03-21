@@ -1,5 +1,56 @@
 # BoAT v4 SDK — Release Notes
 
+## v0.0.2 (2026-03-21)
+
+### Circle Gateway — Solana + Cross-chain Support
+
+- **Gateway on Solana:** deposit, balance (on-chain + off-chain API), SOL-to-SOL transfer, trustless withdraw/complete
+- **Cross-chain transfers:** EVM-to-Solana and Solana-to-EVM USDC transfers via Circle Gateway
+- **Generic PDA derivation:** `boat_sol_find_pda()` — reusable for any Solana program
+- **Off-chain balance query:** `boat_gateway_sol_api_balance()` for Gateway API balance without on-chain RPC
+- **Configurable Gateway API URL:** `gateway_api_url` field in `BoatGatewayConfig` and `BoatGatewaySolConfig` (testnet/mainnet)
+- **Mainnet constants:** `BOAT_GW_SOL_MAINNET_USDC`, `BOAT_GW_SOL_MAINNET_WALLET`, `BOAT_GW_SOL_MAINNET_MINTER`
+
+### API: Recipient Address Support for All Gateway Transfers
+
+All Gateway transfer functions now accept an explicit recipient address (NULL = self-transfer):
+- `boat_gateway_transfer()` — `const uint8_t *recipient` (20-byte EVM address)
+- `boat_gateway_transfer_evm_to_sol()` — `const uint8_t *sol_recipient` (32-byte Solana pubkey)
+- `boat_gateway_transfer_sol_to_evm()` — `const uint8_t *evm_recipient` (20-byte EVM address)
+- `boat_gateway_sol_transfer()` already supported this in v0.0.1
+
+### Build System Fixes
+
+- Added `pay_gateway_sol.c` and `pay_gateway_cross.c` to `boat.mk` and `sources.txt` with conditional guards (`GATEWAY+SOL`, `GATEWAY+EVM+SOL`)
+- Fixed `Kconfig`: Circle Gateway no longer requires EVM-only — works with EVM or SOL enabled
+
+### Bug Fixes
+
+- Fixed BurnIntent `recipient` field to use USDC ATA (not wallet pubkey) for Solana destinations
+- Updated Ed25519 to expose raw sign (no pre-hash) for Solana Gateway binary signing
+
+### New Examples
+
+| Example | Description |
+|---------|-------------|
+| `pay_gateway_sol_demo.c` | Circle Gateway on Solana (deposit, balance, transfer) |
+
+### New Integration Tests
+
+Four new tests (total: 11):
+- `test_gateway_sol` — Gateway Solana PDA derivation + balance
+- `test_gateway_sol_transfer` — SOL-to-SOL transfer on mainnet
+- `test_gateway_evm_to_sol` — Polygon mainnet → Solana mainnet cross-chain
+- `test_gateway_sol_to_evm` — Solana mainnet → Polygon mainnet cross-chain
+
+### Documentation
+
+- Aligned all docs (README, High-Level Design, User Guide, API Manual) with current codebase
+- Fixed struct definitions in API Manual (`BoatX402PaymentReq`, `BoatNanoConfig`)
+- Added all Gateway Solana and cross-chain function signatures to API Manual
+
+---
+
 ## v0.0.1 (2026-03-19) — Initial Release
 
 BoAT v4 is a ground-up rewrite of the BoAT SDK — a lightweight C-language blockchain SDK for resource-constrained IoT and embedded devices. It enables autonomous on-chain transactions with a compact footprint (~30 KB code for EVM-only, ~40 KB for EVM+Solana, excluding crypto).
