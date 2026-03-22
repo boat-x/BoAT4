@@ -20,7 +20,7 @@ static const uint8_t WITHDRAW_SEL[4]             = { 0x51, 0xcf, 0xf8, 0xd9 }; /
 static const uint8_t AVAILABLE_BALANCE_SEL[4]    = { 0x3c, 0xcb, 0x64, 0xae }; /* availableBalance(address,address) */
 static const uint8_t GATEWAY_MINT_SEL[4]         = { 0x9f, 0xb0, 0x1c, 0xc5 }; /* gatewayMint(bytes,bytes) */
 
-#define GATEWAY_API_TESTNET "https://gateway-api-testnet.circle.com/v1"
+#define GATEWAY_API_FALLBACK "https://gateway-api-testnet.circle.com/v1"
 
 /*============================================================================
  * EIP-712 type hashes for BurnIntent / TransferSpec
@@ -277,6 +277,7 @@ BoatResult boat_gateway_trustless_complete(const BoatGatewayConfig *config, cons
 BoatResult boat_gateway_transfer(const BoatGatewayConfig *src_config,
                                  const BoatGatewayConfig *dst_config,
                                  const BoatKey *key,
+                                 const uint8_t *recipient,
                                  const uint8_t amount[32],
                                  const uint8_t max_fee[32],
                                  BoatEvmRpc *dst_rpc,
@@ -303,7 +304,7 @@ BoatResult boat_gateway_transfer(const BoatGatewayConfig *src_config,
     addr_to_bytes32(src_config->usdc_addr, src_token);
     addr_to_bytes32(dst_config->usdc_addr, dst_token);
     addr_to_bytes32(info.address, src_depositor);
-    addr_to_bytes32(info.address, dst_recipient);
+    addr_to_bytes32(recipient ? recipient : info.address, dst_recipient);
     addr_to_bytes32(info.address, src_signer);
     memset(dst_caller, 0, 32); /* zero = anyone can call */
     boat_random(salt, 32);
@@ -410,7 +411,9 @@ BoatResult boat_gateway_transfer(const BoatGatewayConfig *src_config,
     const BoatHttpOps *http = boat_get_http_ops();
     BoatHttpResponse api_resp = {0};
     char api_url[256];
-    snprintf(api_url, sizeof(api_url), "%s/transfer", GATEWAY_API_TESTNET);
+    const char *base = (src_config->gateway_api_url[0] != '\0')
+                       ? src_config->gateway_api_url : GATEWAY_API_FALLBACK;
+    snprintf(api_url, sizeof(api_url), "%s/transfer", base);
 
     r = http->post(api_url, "application/json",
                    (const uint8_t *)api_body, strlen(api_body), NULL, &api_resp);

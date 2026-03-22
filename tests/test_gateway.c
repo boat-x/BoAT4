@@ -182,12 +182,16 @@ int main(int argc, char **argv)
         printf("  Cross-chain: Arc (domain %d) -> Base Sepolia (domain %d), 0.01 USDC\n",
                ARC_DOMAIN, BASE_SEPOLIA_DOMAIN);
 
+        /* Sender and receiver — same address for self-transfer */
+        const uint8_t *sender  = info.address;
+        const uint8_t *receiver = info.address;  /* self-transfer */
+
         BoatEvmRpc base_rpc;
         boat_evm_rpc_init(&base_rpc, base_rpc_url);
 
         BoatGatewayTransferResult xfer_result;
         r = boat_gateway_transfer(&arc_config, &base_config, key,
-                                  SMALL_USDC, MAX_FEE, &base_rpc, &xfer_result);
+                                  receiver, SMALL_USDC, MAX_FEE, &base_rpc, &xfer_result);
         if (r == BOAT_SUCCESS && !test_is_zero(xfer_result.mint_txhash, 32)) {
             TEST_PASS("cross_chain_transfer");
             test_print_txhash(xfer_result.mint_txhash);

@@ -62,6 +62,12 @@ endif
 ifdef BOAT_PAY_GATEWAY
 BOAT_CFLAGS += -DBOAT_PAY_GATEWAY_ENABLED=1
 BOAT_SRCS += $(BOAT4_DIR)src/pay/pay_common.c $(BOAT4_DIR)src/pay/pay_gateway.c
+ifdef BOAT_SOL
+BOAT_SRCS += $(BOAT4_DIR)src/pay/pay_gateway_sol.c
+ifdef BOAT_EVM
+BOAT_SRCS += $(BOAT4_DIR)src/pay/pay_gateway_cross.c
+endif
+endif
 endif
 
 # Deduplicate pay_common.c if multiple payment modules enabled

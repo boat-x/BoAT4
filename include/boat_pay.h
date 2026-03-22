@@ -8,6 +8,7 @@
 #include "boat.h"
 #include "boat_key.h"
 #include "boat_evm.h"
+#include "boat_sol.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -137,15 +138,16 @@ BoatResult boat_nano_pay(const char *url, const BoatX402ReqOpts *opts,
 #endif /* BOAT_PAY_NANO_ENABLED */
 
 /*============================================================================
- * Circle Gateway
+ * Circle Gateway — EVM
  *==========================================================================*/
-#if BOAT_PAY_GATEWAY_ENABLED
+#if BOAT_PAY_GATEWAY_ENABLED && BOAT_EVM_ENABLED
 
 typedef struct {
     uint8_t           gateway_wallet_addr[20];
     uint8_t           gateway_minter_addr[20];  /* gatewayMint contract on this chain */
     uint8_t           usdc_addr[20];            /* USDC contract address on this chain */
     uint32_t          domain;                   /* Circle Gateway domain ID */
+    char              gateway_api_url[128];     /* e.g. "https://gateway-api.circle.com/v1"; empty = testnet */
     BoatEvmChainConfig chain;
 } BoatGatewayConfig;
 
@@ -162,6 +164,7 @@ BoatResult boat_gateway_balance(const BoatGatewayConfig *config, const uint8_t a
 BoatResult boat_gateway_transfer(const BoatGatewayConfig *src_config,
                                  const BoatGatewayConfig *dst_config,
                                  const BoatKey *key,
+                                 const uint8_t *recipient,  /* 20-byte EVM addr, NULL = self */
                                  const uint8_t amount[32],
                                  const uint8_t max_fee[32],
                                  BoatEvmRpc *dst_rpc,
@@ -175,7 +178,94 @@ BoatResult boat_gateway_trustless_withdraw(const BoatGatewayConfig *config, cons
 BoatResult boat_gateway_trustless_complete(const BoatGatewayConfig *config, const BoatKey *key,
                                            BoatEvmRpc *rpc, uint8_t txhash[32]);
 
-#endif /* BOAT_PAY_GATEWAY_ENABLED */
+#endif /* BOAT_PAY_GATEWAY_ENABLED && BOAT_EVM_ENABLED */
+
+/*============================================================================
+ * Circle Gateway — Solana
+ *==========================================================================*/
+#if BOAT_PAY_GATEWAY_ENABLED && BOAT_SOL_ENABLED
+
+/* Well-known Solana program IDs (base58-decoded 32-byte pubkeys) */
+extern const uint8_t BOAT_GW_SOL_DEVNET_WALLET[32];
+extern const uint8_t BOAT_GW_SOL_DEVNET_MINTER[32];
+extern const uint8_t BOAT_GW_SOL_MAINNET_WALLET[32];
+extern const uint8_t BOAT_GW_SOL_MAINNET_MINTER[32];
+extern const uint8_t BOAT_GW_SOL_DEVNET_USDC[32];
+extern const uint8_t BOAT_GW_SOL_MAINNET_USDC[32];
+
+typedef struct {
+    uint8_t            gateway_wallet_program[32];
+    uint8_t            gateway_minter_program[32];
+    uint8_t            usdc_mint[32];
+    uint32_t           domain;          /* 5 for Solana */
+    char               gateway_api_url[128]; /* e.g. "https://gateway-api.circle.com/v1"; empty = testnet */
+    BoatSolChainConfig chain;
+} BoatGatewaySolConfig;
+
+typedef struct {
+    uint8_t signature[64];
+} BoatGatewaySolTransferResult;
+
+typedef struct {
+    uint64_t available_amount;
+    uint64_t withdrawing_amount;
+    uint64_t withdrawal_slot;
+} BoatGatewaySolDepositInfo;
+
+/* Solana-only Gateway functions */
+BoatResult boat_gateway_sol_deposit(const BoatGatewaySolConfig *config, const BoatKey *key,
+                                    uint64_t amount, BoatSolRpc *rpc, uint8_t sig[64]);
+BoatResult boat_gateway_sol_balance(const BoatGatewaySolConfig *config, const uint8_t owner[32],
+                                    BoatSolRpc *rpc, BoatGatewaySolDepositInfo *info);
+BoatResult boat_gateway_sol_api_balance(const BoatGatewaySolConfig *config,
+                                        const uint8_t owner[32],
+                                        uint64_t *available);
+BoatResult boat_gateway_sol_transfer(const BoatGatewaySolConfig *src_config,
+                                     const BoatGatewaySolConfig *dst_config,
+                                     const BoatKey *key,
+                                     const uint8_t *recipient,  /* 32-byte pubkey, NULL = self */
+                                     uint64_t amount, uint64_t max_fee,
+                                     BoatSolRpc *dst_rpc,
+                                     BoatGatewaySolTransferResult *result);
+BoatResult boat_gateway_sol_trustless_withdraw(const BoatGatewaySolConfig *config,
+                                               const BoatKey *key, uint64_t amount,
+                                               BoatSolRpc *rpc, uint8_t sig[64]);
+BoatResult boat_gateway_sol_trustless_complete(const BoatGatewaySolConfig *config,
+                                               const BoatKey *key,
+                                               BoatSolRpc *rpc, uint8_t sig[64]);
+
+#endif /* BOAT_PAY_GATEWAY_ENABLED && BOAT_SOL_ENABLED */
+
+/*============================================================================
+ * Circle Gateway — Cross-chain (EVM <-> Solana)
+ *==========================================================================*/
+#if BOAT_PAY_GATEWAY_ENABLED && BOAT_EVM_ENABLED && BOAT_SOL_ENABLED
+
+/* EVM -> Solana: burn on EVM (EIP-712 + secp256k1), mint on Solana */
+BoatResult boat_gateway_transfer_evm_to_sol(
+    const BoatGatewayConfig    *src_config,
+    const BoatGatewaySolConfig *dst_config,
+    const BoatKey *evm_key,
+    const BoatKey *sol_key,
+    const uint8_t *sol_recipient,  /* 32-byte pubkey, NULL = sol_key's address */
+    const uint8_t amount[32],
+    const uint8_t max_fee[32],
+    BoatSolRpc *dst_rpc,
+    BoatGatewaySolTransferResult *result);
+
+/* Solana -> EVM: burn on Solana (binary + Ed25519), mint on EVM */
+BoatResult boat_gateway_transfer_sol_to_evm(
+    const BoatGatewaySolConfig *src_config,
+    const BoatGatewayConfig    *dst_config,
+    const BoatKey *sol_key,
+    const BoatKey *evm_key,
+    const uint8_t *evm_recipient,  /* 20-byte EVM addr, NULL = evm_key's address */
+    uint64_t amount,
+    uint64_t max_fee,
+    BoatEvmRpc *dst_rpc,
+    BoatGatewayTransferResult *result);
+
+#endif /* BOAT_PAY_GATEWAY_ENABLED && BOAT_EVM_ENABLED && BOAT_SOL_ENABLED */
 
 #ifdef __cplusplus
 }

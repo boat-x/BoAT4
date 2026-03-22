@@ -9,18 +9,20 @@ config BOAT_SOL_ENABLED
     default y
 
 menu "Payment Protocols"
-    depends on BOAT_EVM_ENABLED
 
 config BOAT_PAY_X402_ENABLED
     bool "Enable x402 payment protocol"
+    depends on BOAT_EVM_ENABLED
     default n
 
 config BOAT_PAY_NANO_ENABLED
     bool "Enable Circle Nanopayments"
+    depends on BOAT_EVM_ENABLED
     default n
 
 config BOAT_PAY_GATEWAY_ENABLED
     bool "Enable Circle Gateway"
+    depends on BOAT_EVM_ENABLED || BOAT_SOL_ENABLED
     default n
 
 endmenu

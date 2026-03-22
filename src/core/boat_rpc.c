@@ -69,6 +69,19 @@ BoatResult boat_rpc_call(BoatRpcCtx *ctx, const char *method, const char *params
         if (msg && cJSON_IsString(msg)) {
             BOAT_LOG(BOAT_LOG_NORMAL, "RPC error: %s", msg->valuestring);
         }
+        /* Print simulation logs if available */
+        cJSON *data = cJSON_GetObjectItem(error, "data");
+        if (data && cJSON_IsObject(data)) {
+            cJSON *logs = cJSON_GetObjectItem(data, "logs");
+            if (logs && cJSON_IsArray(logs)) {
+                cJSON *log_item;
+                cJSON_ArrayForEach(log_item, logs) {
+                    if (cJSON_IsString(log_item)) {
+                        BOAT_LOG(BOAT_LOG_NORMAL, "  log: %s", log_item->valuestring);
+                    }
+                }
+            }
+        }
         cJSON_Delete(root);
         http->free_response(&response);
         return BOAT_ERROR_RPC_SERVER;

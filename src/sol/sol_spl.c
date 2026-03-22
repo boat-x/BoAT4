@@ -5,6 +5,7 @@
 #include "boat_sol.h"
 #include "boat_pal.h"
 #include "sha2.h"  /* trezor-crypto SHA256 */
+#include "ed25519-donna/ed25519.h"  /* ed25519_point_is_on_curve */
 
 #include <string.h>
 
@@ -66,21 +67,46 @@ BoatResult boat_sol_ata_address(const uint8_t wallet[32], const uint8_t mint[32]
         uint8_t hash[32];
         sha256_Final(&ctx, hash);
 
-        /* Check if point is NOT on ed25519 curve.
-         * A simplified check: try to decompress as ed25519 point.
-         * For production, use ed25519_point_is_on_curve().
-         * Here we use a heuristic: if the high bit patterns don't match
-         * a valid ed25519 point, accept it. In practice, ~50% of hashes
-         * are valid PDAs, so bump=255 almost always works.
-         *
-         * Proper check: attempt ed25519 point decompression and reject if valid.
-         * For embedded use, we accept the first bump (255) as Solana runtime
-         * will validate. The canonical ATA bump is deterministic.
-         */
-        /* TODO: proper on-curve check via ed25519_point_decompress */
-        /* For now, accept bump=255 which is correct for standard ATAs */
-        memcpy(ata, hash, 32);
-        return BOAT_SUCCESS;
+        /* PDA must NOT be on the ed25519 curve */
+        if (!ed25519_point_is_on_curve(hash)) {
+            memcpy(ata, hash, 32);
+            return BOAT_SUCCESS;
+        }
+    }
+
+    return BOAT_ERROR;
+}
+
+/*----------------------------------------------------------------------------
+ * Generic PDA derivation: findProgramAddress(seeds, program_id)
+ *--------------------------------------------------------------------------*/
+BoatResult boat_sol_find_pda(const uint8_t *seeds[], const size_t seed_lens[],
+                             size_t num_seeds, const uint8_t program_id[32],
+                             uint8_t pda[32])
+{
+    if (!seeds || !seed_lens || !program_id || !pda) return BOAT_ERROR_ARG_NULL;
+
+    const char *pda_marker = "ProgramDerivedAddress";
+
+    for (int bump = 255; bump >= 0; bump--) {
+        DEFAULT_SHA256_CTX ctx;
+        sha256_Init(&ctx);
+        for (size_t i = 0; i < num_seeds; i++) {
+            sha256_Update(&ctx, seeds[i], seed_lens[i]);
+        }
+        uint8_t bump_byte = (uint8_t)bump;
+        sha256_Update(&ctx, &bump_byte, 1);
+        sha256_Update(&ctx, program_id, 32);
+        sha256_Update(&ctx, (const uint8_t *)pda_marker, 21);
+
+        uint8_t hash[32];
+        sha256_Final(&ctx, hash);
+
+        /* PDA must NOT be on the ed25519 curve */
+        if (!ed25519_point_is_on_curve(hash)) {
+            memcpy(pda, hash, 32);
+            return BOAT_SUCCESS;
+        }
     }
 
     return BOAT_ERROR;
@@ -134,6 +160,29 @@ BoatResult boat_sol_spl_create_ata(const uint8_t payer[32], const uint8_t wallet
     boat_sol_ix_add_account(ix, BOAT_SOL_TOKEN_PROGRAM_ID, false, false);   /* token program */
 
     /* CreateAssociatedTokenAccount has no instruction data */
+    return BOAT_SUCCESS;
+}
+
+BoatResult boat_sol_spl_create_ata_idempotent(const uint8_t payer[32], const uint8_t wallet[32],
+                                               const uint8_t mint[32], BoatSolInstruction *ix)
+{
+    if (!payer || !wallet || !mint || !ix) return BOAT_ERROR_ARG_NULL;
+
+    uint8_t ata[32];
+    BoatResult r = boat_sol_ata_address(wallet, mint, ata);
+    if (r != BOAT_SUCCESS) return r;
+
+    boat_sol_ix_init(ix, BOAT_SOL_ATA_PROGRAM_ID);
+    boat_sol_ix_add_account(ix, payer, true, true);
+    boat_sol_ix_add_account(ix, ata, false, true);
+    boat_sol_ix_add_account(ix, wallet, false, false);
+    boat_sol_ix_add_account(ix, mint, false, false);
+    boat_sol_ix_add_account(ix, BOAT_SOL_SYSTEM_PROGRAM_ID, false, false);
+    boat_sol_ix_add_account(ix, BOAT_SOL_TOKEN_PROGRAM_ID, false, false);
+
+    /* Idempotent variant: instruction data = [1] */
+    static const uint8_t data[1] = { 1 };
+    boat_sol_ix_set_data(ix, data, 1);
     return BOAT_SUCCESS;
 }
 

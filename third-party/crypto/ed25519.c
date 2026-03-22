@@ -254,3 +254,77 @@ int ed25519_sign_open(const unsigned char *m, size_t mlen,
     (void)m; (void)mlen; (void)pk; (void)RS;
     return -1; /* verification not needed for BoAT signing-only use */
 }
+
+/*--- On-curve check for Solana PDA derivation ---*/
+/* Returns 1 if the 32-byte value is a valid ed25519 point (on curve), 0 otherwise.
+ * Used by boat_sol_find_pda() to reject on-curve hashes. */
+int ed25519_point_is_on_curve(const uint8_t p[32])
+{
+    gf y, y2, u, v, v3, vxx, check;
+
+    /* Unpack y coordinate (clear sign bit) */
+    unpack25519(y, p);
+
+    /* u = y^2 - 1 */
+    S(y2, y);
+    Z(u, y2, gf1);
+
+    /* v = d*y^2 + 1 */
+    M(v, D, y2);
+    A(v, v, gf1);
+
+    /* x^2 = u / v = u * v^(-1)
+     * But we check via: x^2 * v == u
+     * Compute x = u * v^3 * (u * v^7)^((p-5)/8)
+     * Then verify x^2 * v == u */
+
+    /* v3 = v^3 */
+    S(v3, v);
+    M(v3, v3, v);
+
+    /* vxx candidate: u * v^3 */
+    gf uv3;
+    M(uv3, u, v3);
+
+    /* uv7 = u * v^7 */
+    gf v7, uv7;
+    S(v7, v3);       /* v^6 */
+    M(v7, v7, v);    /* v^7 */
+    M(uv7, u, v7);
+
+    /* x = uv3 * uv7^((p-5)/8)
+     * (p-5)/8 exponent: we compute uv7^(2^252 - 3) via pow2523 */
+    gf x;
+    /* pow2523: raise to (2^252 - 3) */
+    {
+        gf c;
+        memcpy(c, uv7, sizeof(gf));
+        for (int i = 250; i >= 0; i--) {
+            S(c, c);
+            if (i != 1) M(c, c, uv7);
+        }
+        M(x, uv3, c);
+    }
+
+    /* vxx = v * x^2 */
+    S(vxx, x);
+    M(vxx, vxx, v);
+
+    /* Check if vxx == u */
+    gf diff;
+    Z(diff, vxx, u);
+    uint8_t d1[32];
+    pack25519(d1, diff);
+    int is_zero = 1;
+    for (int i = 0; i < 32; i++) is_zero &= (d1[i] == 0);
+    if (is_zero) return 1;
+
+    /* Check if vxx == -u (the other root) */
+    A(diff, vxx, u);
+    pack25519(d1, diff);
+    is_zero = 1;
+    for (int i = 0; i < 32; i++) is_zero &= (d1[i] == 0);
+    if (is_zero) return 1;
+
+    return 0; /* not on curve */
+}

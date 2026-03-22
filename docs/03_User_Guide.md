@@ -578,12 +578,92 @@ Enable with -DBOAT_PAY_GATEWAY=ON (requires -DBOAT_EVM=ON) at build time.
 
     // Withdraw all available balance (instant, same-chain transfer)
     // Use boat_gateway_transfer() with src == dst config:
-    // boat_gateway_transfer(&config, &config, key, amount, zero_fee, &rpc, &result);
+    // boat_gateway_transfer(&config, &config, key, NULL, amount, zero_fee, &rpc, &result);
+    // Pass a 20-byte EVM address as recipient to transfer to a different address:
+    // boat_gateway_transfer(&config, &config, key, recipient_addr, amount, zero_fee, &rpc, &result);
 
     // Trustless withdrawal (emergency, 7-day delay, only if Circle API is down):
     // boat_gateway_trustless_withdraw(&config, key, amount, &rpc, txhash);
     // ... wait 7 days ...
     // boat_gateway_trustless_complete(&config, key, &rpc, txhash);
+
+### 8.4 Gateway on Solana
+
+Enable with `-DBOAT_PAY_GATEWAY=ON -DBOAT_SOL=ON` at build time.
+
+    #include "boat_sol.h"
+    #include "boat_pay.h"
+
+    // Configure Solana Gateway
+    BoatGatewaySolConfig config;
+    memset(&config, 0, sizeof(config));
+    memcpy(config.gateway_wallet_program, BOAT_GW_SOL_DEVNET_WALLET, 32);
+    memcpy(config.gateway_minter_program, BOAT_GW_SOL_DEVNET_MINTER, 32);
+    memcpy(config.usdc_mint, BOAT_GW_SOL_DEVNET_USDC, 32);
+    config.domain = 5;  // Solana domain ID
+    strncpy(config.chain.rpc_url, "https://api.devnet.solana.com",
+            sizeof(config.chain.rpc_url) - 1);
+    config.chain.commitment = BOAT_SOL_COMMITMENT_CONFIRMED;
+
+    BoatSolRpc rpc;
+    boat_sol_rpc_init(&rpc, config.chain.rpc_url);
+
+    // Check on-chain balance
+    BoatGatewaySolDepositInfo dep_info;
+    boat_gateway_sol_balance(&config, my_pubkey, &rpc, &dep_info);
+    // dep_info.available_amount is in raw units (1 USDC = 1000000)
+
+    // Or check balance via Gateway API (off-chain view, reflects pending operations)
+    uint64_t api_balance;
+    boat_gateway_sol_api_balance(&config, my_pubkey, &api_balance);
+
+    // Deposit USDC (u64 amount, not uint256)
+    uint64_t amount = 1000000;  // 1 USDC
+    uint8_t sig[64];
+    boat_gateway_sol_deposit(&config, key, amount, &rpc, sig);
+
+    // Instant withdrawal (same-chain transfer, src == dst, NULL = self)
+    BoatGatewaySolTransferResult result;
+    boat_gateway_sol_transfer(&config, &config, key, NULL, amount, 0, &rpc, &result);
+
+    // Transfer to another recipient
+    // boat_gateway_sol_transfer(&config, &config, key, recipient_pubkey,
+    //                            amount, max_fee, &rpc, &result);
+
+    // Trustless withdrawal (emergency path):
+    // boat_gateway_sol_trustless_withdraw(&config, key, amount, &rpc, sig);
+    // ... wait for delay period ...
+    // boat_gateway_sol_trustless_complete(&config, key, &rpc, sig);
+
+Key differences from EVM Gateway:
+- Amounts are `uint64_t` (not `uint8_t[32]`) — USDC has 6 decimals on both chains
+- Addresses are 32-byte Solana pubkeys
+- Uses Ed25519 signing (not secp256k1)
+- PDA-derived accounts are computed automatically by the SDK
+
+### 8.5 Cross-chain Gateway (EVM <-> Solana)
+
+Enable with `-DBOAT_PAY_GATEWAY=ON -DBOAT_EVM=ON -DBOAT_SOL=ON`.
+
+Cross-chain transfers require two keys: one for each chain.
+
+    // EVM -> Solana
+    BoatGatewayConfig evm_config = { ... };       // EVM source
+    BoatGatewaySolConfig sol_config = { ... };     // Solana destination
+    BoatGatewaySolTransferResult result;
+    boat_gateway_transfer_evm_to_sol(&evm_config, &sol_config,
+                                      evm_key, sol_key,
+                                      NULL,  /* NULL = self, or 32-byte Solana pubkey */
+                                      amount_u256, max_fee_u256,
+                                      &sol_rpc, &result);
+
+    // Solana -> EVM
+    BoatGatewayTransferResult evm_result;
+    boat_gateway_transfer_sol_to_evm(&sol_config, &evm_config,
+                                      sol_key, evm_key,
+                                      NULL,  /* NULL = self, or 20-byte EVM address */
+                                      amount_u64, max_fee_u64,
+                                      &evm_rpc, &evm_result);
 
 ---
 
@@ -705,15 +785,19 @@ Error code ranges for category-level handling:
 
 ## 12. Examples
 
-The examples/ directory contains five complete programs:
+The examples/ directory contains nine complete programs:
 
 | File | Description |
 |------|-------------|
 | evm_transfer.c | Send ETH on Base Sepolia |
 | evm_erc20.c | Query ERC20 balance + send transfer |
+| evm_erc20_transferfrom.c | ERC-20 transferFrom using abi2c-generated codec |
+| erc20_codec.c | Generated ERC-20 codec (abi2c output) |
 | sol_transfer.c | Send SPL token on Solana devnet |
 | pay_x402_demo.c | x402 payment for HTTP resource |
 | pay_nano_demo.c | Circle Nanopayments deposit + authorize |
+| pay_gateway_demo.c | Circle Gateway deposit + transfer (EVM) |
+| pay_gateway_sol_demo.c | Circle Gateway on Solana (deposit, balance, transfer) |
 
 To run an example:
 
