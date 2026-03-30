@@ -25,6 +25,11 @@ config BOAT_PAY_GATEWAY_ENABLED
     depends on BOAT_EVM_ENABLED || BOAT_SOL_ENABLED
     default n
 
+config BOAT_PAY_MPP_ENABLED
+    bool "Enable MPP payment protocol (Tempo Charge)"
+    depends on BOAT_EVM_ENABLED
+    default n
+
 endmenu
 
 menu "Key Management"

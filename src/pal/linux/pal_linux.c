@@ -158,7 +158,7 @@ static const BoatHttpOps *g_http_ops = NULL;
 void boat_set_http_ops(const BoatHttpOps *ops) { g_http_ops = ops; }
 const BoatHttpOps *boat_get_http_ops(void)     { return g_http_ops; }
 
-/*--- curl write callback ---*/
+/*--- curl write/header callbacks ---*/
 typedef struct {
     uint8_t *data;
     size_t   len;
@@ -177,6 +177,23 @@ static size_t curl_write_cb(void *contents, size_t size, size_t nmemb, void *use
         buf->cap = new_cap;
     }
     memcpy(buf->data + buf->len, contents, total);
+    buf->len += total;
+    buf->data[buf->len] = '\0';
+    return total;
+}
+
+static size_t curl_header_cb(char *buffer, size_t size, size_t nitems, void *userp)
+{
+    size_t total = size * nitems;
+    CurlBuf *buf = (CurlBuf *)userp;
+    if (buf->len + total >= buf->cap) {
+        size_t new_cap = (buf->cap + total) * 2;
+        uint8_t *new_data = (uint8_t *)realloc(buf->data, new_cap);
+        if (!new_data) return 0;
+        buf->data = new_data;
+        buf->cap = new_cap;
+    }
+    memcpy(buf->data + buf->len, buffer, total);
     buf->len += total;
     buf->data[buf->len] = '\0';
     return total;
@@ -216,6 +233,9 @@ static BoatResult curl_post(const char *url, const char *content_type,
     CurlBuf buf = { .data = (uint8_t *)malloc(4096), .len = 0, .cap = 4096 };
     if (!buf.data) { curl_easy_cleanup(curl); return BOAT_ERROR_MEM_ALLOC; }
 
+    CurlBuf hdr_buf = { .data = (uint8_t *)malloc(2048), .len = 0, .cap = 2048 };
+    if (!hdr_buf.data) { free(buf.data); curl_easy_cleanup(curl); return BOAT_ERROR_MEM_ALLOC; }
+
     struct curl_slist *headers = NULL;
     char ct_header[128];
     snprintf(ct_header, sizeof(ct_header), "Content-Type: %s",
@@ -236,20 +256,29 @@ static BoatResult curl_post(const char *url, const char *content_type,
     curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, (long)body_len);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_cb);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &buf);
+    curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, curl_header_cb);
+    curl_easy_setopt(curl, CURLOPT_HEADERDATA, &hdr_buf);
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L);
     curl_easy_setopt(curl, CURLOPT_NOPROXY, "localhost,127.0.0.1");
 
+    long http_code = 0;
     CURLcode res = curl_easy_perform(curl);
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
     curl_slist_free_all(headers);
     curl_easy_cleanup(curl);
 
     if (res != CURLE_OK) {
         free(buf.data);
+        free(hdr_buf.data);
         return BOAT_ERROR_HTTP_FAIL;
     }
 
     response->data = buf.data;
     response->len = buf.len;
+    response->headers = (char *)hdr_buf.data;
+    response->headers_len = hdr_buf.len;
+
+    if (http_code == 402) return BOAT_ERROR_HTTP_402;
     return BOAT_SUCCESS;
 }
 
@@ -262,12 +291,17 @@ static BoatResult curl_get(const char *url, const char *extra_headers,
     CurlBuf buf = { .data = (uint8_t *)malloc(4096), .len = 0, .cap = 4096 };
     if (!buf.data) { curl_easy_cleanup(curl); return BOAT_ERROR_MEM_ALLOC; }
 
+    CurlBuf hdr_buf = { .data = (uint8_t *)malloc(2048), .len = 0, .cap = 2048 };
+    if (!hdr_buf.data) { free(buf.data); curl_easy_cleanup(curl); return BOAT_ERROR_MEM_ALLOC; }
+
     struct curl_slist *headers = parse_extra_headers(extra_headers);
 
     curl_easy_setopt(curl, CURLOPT_URL, url);
     if (headers) curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_cb);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &buf);
+    curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, curl_header_cb);
+    curl_easy_setopt(curl, CURLOPT_HEADERDATA, &hdr_buf);
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L);
     curl_easy_setopt(curl, CURLOPT_NOPROXY, "localhost,127.0.0.1");
 
@@ -324,11 +358,14 @@ static BoatResult curl_get(const char *url, const char *extra_headers,
 
     if (res != CURLE_OK) {
         free(buf.data);
+        free(hdr_buf.data);
         return BOAT_ERROR_HTTP_FAIL;
     }
 
     response->data = buf.data;
     response->len = buf.len;
+    response->headers = (char *)hdr_buf.data;
+    response->headers_len = hdr_buf.len;
 
     if (http_code == 402) return BOAT_ERROR_HTTP_402;
     return BOAT_SUCCESS;
@@ -336,10 +373,17 @@ static BoatResult curl_get(const char *url, const char *extra_headers,
 
 static void curl_free_response(BoatHttpResponse *response)
 {
-    if (response && response->data) {
-        free(response->data);
-        response->data = NULL;
-        response->len = 0;
+    if (response) {
+        if (response->data) {
+            free(response->data);
+            response->data = NULL;
+            response->len = 0;
+        }
+        if (response->headers) {
+            free(response->headers);
+            response->headers = NULL;
+            response->headers_len = 0;
+        }
     }
 }
 

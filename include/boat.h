@@ -47,6 +47,10 @@ extern "C" {
 #define BOAT_PAY_GATEWAY_ENABLED 0
 #endif
 
+#ifndef BOAT_PAY_MPP_ENABLED
+#define BOAT_PAY_MPP_ENABLED     0
+#endif
+
 /*----------------------------------------------------------------------------
  * Error codes
  *--------------------------------------------------------------------------*/

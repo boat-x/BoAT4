@@ -46,9 +46,9 @@ BoatResult boat_eip3009_sign(const BoatEip3009Auth *auth, const BoatEip712Domain
                              const BoatKey *key, uint8_t sig65[65]);
 
 /*============================================================================
- * x402 Protocol
+ * Common: HTTP request options (shared by x402, MPP, etc.)
  *==========================================================================*/
-#if BOAT_PAY_X402_ENABLED
+#if BOAT_PAY_X402_ENABLED || BOAT_PAY_MPP_ENABLED
 
 /* HTTP method for the original application request */
 typedef enum {
@@ -57,15 +57,25 @@ typedef enum {
 } BoatHttpMethod;
 
 /* Options describing the original HTTP request from the application.
- * These are replayed in the second request (with X-Payment header added).
- * Pass NULL to x402 functions for a simple GET with no extra headers. */
+ * These are replayed in the second request (with payment header added).
+ * Pass NULL to payment functions for a simple GET with no extra headers. */
 typedef struct {
     BoatHttpMethod method;            /* GET or POST */
     const char    *content_type;      /* Content-Type for POST (NULL for GET) */
     const uint8_t *body;              /* Request body for POST (NULL for GET) */
     size_t         body_len;          /* Body length */
     const char    *extra_headers;     /* App headers, "Key: Val\r\n..." (NULL if none) */
-} BoatX402ReqOpts;
+} BoatPayReqOpts;
+
+/* Backward compatibility alias */
+typedef BoatPayReqOpts BoatX402ReqOpts;
+
+#endif /* BOAT_PAY_X402_ENABLED || BOAT_PAY_MPP_ENABLED */
+
+/*============================================================================
+ * x402 Protocol
+ *==========================================================================*/
+#if BOAT_PAY_X402_ENABLED
 
 typedef struct {
     int      x402_version;          /* 1 or 2 */
@@ -266,6 +276,117 @@ BoatResult boat_gateway_transfer_sol_to_evm(
     BoatGatewayTransferResult *result);
 
 #endif /* BOAT_PAY_GATEWAY_ENABLED && BOAT_EVM_ENABLED && BOAT_SOL_ENABLED */
+
+/*============================================================================
+ * MPP (Machine Payments Protocol) — Client-side
+ *==========================================================================*/
+#if BOAT_PAY_MPP_ENABLED
+
+/*--- Parsed 402 challenge from WWW-Authenticate: Payment header ---*/
+typedef struct {
+    char     id[64];            /* Challenge ID (HMAC-bound) */
+    char     realm[128];        /* Protection space (hostname) */
+    char     method[32];        /* Payment method ("tempo", "stripe", etc.) */
+    char     intent[32];        /* Intent type ("charge", "session") */
+    char     request_b64[2048]; /* Raw base64url-encoded request (echoed in credential) */
+    char     expires[64];       /* Optional RFC 3339 expiration */
+    char     description[256];  /* Optional human-readable description */
+    char     digest[128];       /* Optional content digest */
+    char     opaque_b64[512];   /* Optional server correlation data (base64url) */
+
+    /* Decoded request JSON fields (charge intent) */
+    char     amount[64];        /* Amount in token base units (string) */
+    char     currency[64];      /* Token address or identifier */
+    char     recipient[64];     /* Recipient address (0x-prefixed hex) */
+    uint64_t chain_id;          /* From methodDetails.chainId */
+} BoatMppChallenge;
+
+/*--- Payment receipt from Payment-Receipt header ---*/
+typedef struct {
+    char     status[16];        /* "success" */
+    char     method[32];        /* Payment method */
+    char     reference[128];    /* Transaction hash or reference */
+    char     timestamp[64];     /* ISO 8601 timestamp */
+} BoatMppReceipt;
+
+/*--- Tempo chain configuration ---*/
+typedef struct {
+    BoatEvmChainConfig chain;
+    uint8_t  token_addr[20];    /* pathUSD or USDC contract address */
+    char     rpc_url[256];      /* Tempo RPC endpoint */
+} BoatMppTempoConfig;
+
+/* Tempo presets */
+#define BOAT_MPP_TEMPO_MAINNET_CHAIN_ID     4217
+#define BOAT_MPP_TEMPO_TESTNET_CHAIN_ID     42431  /* Tempo Moderato testnet */
+
+/* pathUSD on Tempo testnet: 0x20c0000000000000000000000000000000000000 */
+extern const uint8_t BOAT_MPP_TEMPO_PATHUSD_TESTNET[20];
+/* USDC on Tempo mainnet: 0x20c000000000000000000000b9537d11c60e8b50 */
+extern const uint8_t BOAT_MPP_TEMPO_USDC_MAINNET[20];
+
+/*--- MPP envelope functions ---*/
+
+/* Base64url encode/decode (RFC 4648 URL-safe, no padding) */
+size_t   boat_base64url_encode(const uint8_t *in, size_t in_len, char *out, size_t out_cap);
+BoatResult boat_base64url_decode(const char *in, size_t in_len, uint8_t *out, size_t out_cap, size_t *out_len);
+
+/* Parse WWW-Authenticate: Payment challenge(s) from raw response headers.
+ * Fills challenges[] array, returns count in *n_challenges.
+ * Returns BOAT_SUCCESS if at least one MPP challenge found. */
+BoatResult boat_mpp_parse_challenges(const char *headers, size_t headers_len,
+                                     BoatMppChallenge *challenges, size_t max_challenges,
+                                     size_t *n_challenges);
+
+/* Build the Authorization: Payment credential string (heap-allocated).
+ * challenge: parsed challenge (id, realm, method, intent, request_b64 are echoed back)
+ * source: optional DID string (NULL to omit)
+ * payload_json: method-specific proof JSON string (e.g., {"type":"hash","hash":"0x..."})
+ * Returns BOAT_SUCCESS, caller must boat_free(*credential_out). */
+BoatResult boat_mpp_build_credential(const BoatMppChallenge *challenge,
+                                     const char *source,
+                                     const char *payload_json,
+                                     char **credential_out);
+
+/* Parse Payment-Receipt header value into receipt struct. */
+BoatResult boat_mpp_parse_receipt(const char *headers, size_t headers_len,
+                                  BoatMppReceipt *receipt);
+
+/* Send HTTP request; if 402 with MPP challenge, parse and return it.
+ * Returns BOAT_SUCCESS if 2xx (response filled, no payment needed).
+ * Returns BOAT_ERROR_HTTP_402 if MPP challenge parsed into challenge_out. */
+BoatResult boat_mpp_request(const char *url, const BoatPayReqOpts *opts,
+                            BoatMppChallenge *challenge_out,
+                            uint8_t **response, size_t *response_len);
+
+/* Retry request with Authorization: Payment credential attached.
+ * Also parses Payment-Receipt from the response. */
+BoatResult boat_mpp_pay_and_get(const char *url, const BoatPayReqOpts *opts,
+                                const char *credential,
+                                uint8_t **response, size_t *response_len,
+                                BoatMppReceipt *receipt_out);
+
+/*--- Tempo Charge method handler ---*/
+
+/* Execute Tempo Charge: transfer TIP-20 token on-chain, return credential string.
+ * challenge: parsed MPP challenge with charge intent
+ * key: secp256k1 signing key
+ * config: Tempo chain + RPC configuration
+ * credential_out: heap-allocated "Payment <base64url>" string, caller frees */
+BoatResult boat_mpp_tempo_charge(const BoatMppChallenge *challenge,
+                                 const BoatKey *key,
+                                 const BoatMppTempoConfig *config,
+                                 char **credential_out);
+
+/* Convenience: full MPP Tempo Charge flow (request → pay → retry → done).
+ * Returns BOAT_SUCCESS with response data and receipt on success. */
+BoatResult boat_mpp_tempo_process(const char *url, const BoatPayReqOpts *opts,
+                                  const BoatKey *key,
+                                  const BoatMppTempoConfig *config,
+                                  uint8_t **response, size_t *response_len,
+                                  BoatMppReceipt *receipt_out);
+
+#endif /* BOAT_PAY_MPP_ENABLED */
 
 #ifdef __cplusplus
 }
