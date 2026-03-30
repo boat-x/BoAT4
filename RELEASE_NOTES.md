@@ -1,5 +1,76 @@
 # BoAT v4 SDK — Release Notes
 
+## v0.0.3 (2026-03-30)
+
+### MPP (Machine Payments Protocol) — Tempo Charge
+
+BoAT now supports the **Machine Payments Protocol (MPP)**, the HTTP 402-based machine-to-machine payment standard co-authored by Stripe and Tempo. BoAT acts as a client-side payer: it parses the server's 402 payment challenge, executes an on-chain token transfer, and retries the request with a payment credential.
+
+This release implements the **MPP envelope** (protocol-agnostic HTTP 402 handling) and the **Tempo Charge** payment method (one-shot TIP-20/ERC-20 token transfer on the Tempo blockchain).
+
+### New Features
+
+- **MPP envelope** (`pay_mpp.c`): Parse `WWW-Authenticate: Payment` challenges, build `Authorization: Payment` credentials (base64url-encoded JSON), parse `Payment-Receipt` headers
+- **Base64url encode/decode**: RFC 4648 URL-safe variant without padding — shared utility for MPP
+- **Tempo Charge handler** (`pay_mpp_tempo.c`): Execute TIP-20 token transfer on Tempo chain, return tx hash as credential payload (`{ "type": "hash", "hash": "0x..." }`)
+- **DID source attribution**: Credentials include `did:pkh:eip155:<chainId>:<address>` payer identity
+- **Multi-method negotiation**: Parser supports multiple `WWW-Authenticate: Payment` headers per response
+
+### PAL Extension
+
+- `BoatHttpResponse` extended with `headers` / `headers_len` fields for response header capture
+- curl PAL (`pal_linux.c`) captures response headers via `CURLOPT_HEADERFUNCTION` in both GET and POST
+- Backward compatible — existing code unaffected (new fields are zero-initialized)
+
+### API
+
+- `BoatPayReqOpts` — common HTTP request options type shared by x402 and MPP (`BoatX402ReqOpts` remains as backward-compatible alias)
+
+| Function | Description |
+|----------|-------------|
+| `boat_base64url_encode()` | Base64url encode (RFC 4648 §5, no padding) |
+| `boat_base64url_decode()` | Base64url decode with padding recovery |
+| `boat_mpp_parse_challenges()` | Parse MPP challenge(s) from response headers |
+| `boat_mpp_build_credential()` | Build `Authorization: Payment` credential |
+| `boat_mpp_parse_receipt()` | Parse `Payment-Receipt` from response headers |
+| `boat_mpp_request()` | Send HTTP request, parse 402 challenge if returned |
+| `boat_mpp_pay_and_get()` | Retry request with payment credential |
+| `boat_mpp_tempo_charge()` | Execute Tempo Charge (transfer + credential) |
+| `boat_mpp_tempo_process()` | Full MPP Tempo Charge flow in one call |
+
+### Constants
+
+| Constant | Value | Description |
+|----------|-------|-------------|
+| `BOAT_MPP_TEMPO_MAINNET_CHAIN_ID` | 4217 | Tempo mainnet |
+| `BOAT_MPP_TEMPO_TESTNET_CHAIN_ID` | 42431 | Tempo Moderato testnet |
+| `BOAT_MPP_TEMPO_PATHUSD_TESTNET` | `0x20c000...0000` | pathUSD on testnet |
+| `BOAT_MPP_TEMPO_USDC_MAINNET` | `0x20c000...8b50` | USDC on mainnet |
+
+### New Examples
+
+| Example | Description |
+|---------|-------------|
+| `pay_mpp_demo.c` | End-to-end MPP Tempo Charge payment |
+
+### New Tests
+
+| Test | Type | Description |
+|------|------|-------------|
+| `test_mpp_unit` | Unit | Base64url, challenge parsing, credential building, receipt parsing (50 assertions, no network) |
+| `test_mpp_tempo` | Integration | Full MPP flow against Tempo Moderato testnet via `mpp.dev/api/ping/paid` |
+
+### Test Results
+
+- **Unit test**: 50 passed, 0 failed
+- **Integration test**: 7 passed, 0 failed (live Tempo Moderato testnet, pathUSD payment confirmed on-chain)
+
+### Documentation
+
+- `05_MPP_Feasibility_Analysis.md` — Protocol analysis, architecture decisions, implementation plan
+
+---
+
 ## v0.0.2 (2026-03-21)
 
 ### Circle Gateway — Solana + Cross-chain Support

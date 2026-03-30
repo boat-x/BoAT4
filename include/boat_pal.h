@@ -40,6 +40,8 @@ void       boat_mutex_destroy(BoatMutex *mutex);
 typedef struct {
     uint8_t *data;
     size_t   len;
+    char    *headers;      /* Raw response headers (NULL if not captured) */
+    size_t   headers_len;
 } BoatHttpResponse;
 
 typedef struct {
